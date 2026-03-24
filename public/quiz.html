@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="center-page">
+    <div class="card card-wide" style="max-width:560px">
+      <!-- Header -->
+      <div class="flex justify-between items-center mb-16">
+        <div>
+          <div class="app-title" style="text-align:left;font-size:22px;margin:0">Quiz Time</div>
+          <div class="text-muted" id="participantName"></div>
+        </div>
+        <button class="btn btn-outline btn-sm" onclick="leaveQuiz()">Leave</button>
+      </div>
+
+      <!-- Progress -->
+      <div class="progress-bar" id="progressBar">
+        <div class="progress-fill" id="progressFill" style="width:0%"></div>
+      </div>
+
+      <!-- Content area -->
+      <div id="content">
+        <div class="waiting">
+          <div class="waiting-icon">&#9203;</div>
+          <div class="waiting-text">Waiting for the host to start...</div>
+          <div class="waiting-sub">The first question will appear here automatically</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="/socket.io/socket.io.js"></script>
+  <script>
+    const token = localStorage.getItem('participant_token');
+    const pName = localStorage.getItem('participant_name');
+    if (!token) window.location.href = '/';
+
+    document.getElementById('participantName').textContent = pName || '';
+
+    const socket = io();
+    socket.emit('join-participant');
+
+    let questions = [];
+    let currentIndex = 0;
+    let activeQuestionOrder = 0;
+
+    async function loadState() {
+      try {
+        const res = await fetch('/api/quiz/state', {
+          headers: { 'x-participant-token': token },
+        });
+        if (res.status === 401) { leaveQuiz(); return; }
+        const data = await res.json();
+        questions = data.questions;
+        activeQuestionOrder = data.activeQuestionOrder;
+        document.getElementById('participantName').textContent = data.participant.name;
+        render();
+      } catch (e) {
+        console.error('Failed to load state', e);
+      }
+    }
+
+    function render() {
+      const content = document.getElementById('content');
+
+      if (questions.length === 0) {
+        content.innerHTML = `
+          <div class="waiting">
+            <div class="waiting-icon">&#9203;</div>
+            <div class="waiting-text">Waiting for the host to start...</div>
+            <div class="waiting-sub">The first question will appear here automatically</div>
+          </div>`;
+        updateProgress();
+        return;
+      }
+
+      if (currentIndex >= questions.length) {
+        currentIndex = questions.length - 1;
+      }
+
+      const q = questions[currentIndex];
+      const isLast = currentIndex === questions.length - 1;
+      const canGoNext = !isLast;
+      const isFirst = currentIndex === 0;
+      const answered = q.answer !== null;
+
+      let answerHTML = '';
+      if (answered) {
+        const cls = q.answer === 'yes' ? 'yes' : 'no';
+        const label = q.answer === 'yes' ? 'YES' : 'NO';
+        answerHTML = `
+          <div class="answer-confirmed ${cls}">
+            You answered: ${label}
+          </div>
+          <div class="answer-group">
+            <button class="btn-yes ${q.answer === 'yes' ? 'selected' : ''}" onclick="submitAnswer(${q.id}, 'yes')">YES</button>
+            <button class="btn-no ${q.answer === 'no' ? 'selected' : ''}" onclick="submitAnswer(${q.id}, 'no')">NO</button>
+          </div>
+          <div class="text-muted text-center">You can change your answer</div>`;
+      } else {
+        answerHTML = `
+          <div class="answer-group">
+            <button class="btn-yes" onclick="submitAnswer(${q.id}, 'yes')">YES</button>
+            <button class="btn-no" onclick="submitAnswer(${q.id}, 'no')">NO</button>
+          </div>`;
+      }
+
+      let navHTML = '';
+      const waitingForNext = isLast && activeQuestionOrder > 0;
+      if (isLast && questions.length < activeQuestionOrder) {
+        // More questions should be available but we haven't fetched them
+        navHTML = `
+          <div class="quiz-nav">
+            ${!isFirst ? `<button class="btn btn-outline btn-sm" onclick="prevQuestion()">&#8592; Previous</button>` : '<span></span>'}
+            <button class="btn btn-primary btn-sm" onclick="loadState()">Next Question &#8594;</button>
+          </div>`;
+      } else {
+        navHTML = `
+          <div class="quiz-nav">
+            ${!isFirst ? `<button class="btn btn-outline btn-sm" onclick="prevQuestion()">&#8592; Previous</button>` : '<span></span>'}
+            ${canGoNext
+              ? `<button class="btn btn-primary btn-sm" onclick="nextQuestion()">Next Question &#8594;</button>`
+              : `<div class="text-muted" style="font-size:13px">Waiting for host to unlock next question...</div>`}
+          </div>`;
+      }
+
+      content.innerHTML = `
+        <div class="question-display">
+          <div class="question-number">Question ${q.order_num}</div>
+          <div class="question-text">${escapeHtml(q.text)}</div>
+        </div>
+        ${answerHTML}
+        ${navHTML}`;
+
+      updateProgress();
+    }
+
+    function updateProgress() {
+      const total = activeQuestionOrder || 1;
+      const answered = questions.filter(q => q.answer !== null).length;
+      const pct = total > 0 ? Math.round((answered / total) * 100) : 0;
+      document.getElementById('progressFill').style.width = pct + '%';
+    }
+
+    async function submitAnswer(questionId, answer) {
+      try {
+        const res = await fetch('/api/quiz/answer', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-participant-token': token,
+          },
+          body: JSON.stringify({ questionId, answer }),
+        });
+        if (!res.ok) {
+          const data = await res.json();
+          alert(data.error || 'Failed to submit answer');
+          return;
+        }
+        const q = questions.find(q => q.id === questionId);
+        if (q) q.answer = answer;
+        render();
+      } catch (e) {
+        alert('Network error. Please try again.');
+      }
+    }
+
+    function nextQuestion() {
+      if (currentIndex < questions.length - 1) {
+        currentIndex++;
+        render();
+      }
+    }
+
+    function prevQuestion() {
+      if (currentIndex > 0) {
+        currentIndex--;
+        render();
+      }
+    }
+
+    function leaveQuiz() {
+      localStorage.removeItem('participant_token');
+      localStorage.removeItem('participant_name');
+      window.location.href = '/';
+    }
+
+    function escapeHtml(str) {
+      const div = document.createElement('div');
+      div.textContent = str;
+      return div.innerHTML;
+    }
+
+    socket.on('question-activated', (data) => {
+      activeQuestionOrder = data.activeQuestionOrder;
+      loadState().then(() => {
+        if (questions.length > 0) {
+          const unanswered = questions.findIndex(q => q.answer === null);
+          if (unanswered !== -1) {
+            currentIndex = unanswered;
+          } else {
+            currentIndex = questions.length - 1;
+          }
+          render();
+        }
+      });
+    });
+
+    socket.on('quiz-reset', () => {
+      leaveQuiz();
+    });
+
+    loadState();
+  </script>
+</body>
+</html>
