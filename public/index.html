@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Join Quiz</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/style.css">
+</head>
+<body>
+  <div class="center-page">
+    <div class="card" id="joinCard">
+      <div class="app-title">Quiz Time</div>
+      <div class="app-subtitle">Enter your name to join the quiz</div>
+
+      <div id="error" class="alert alert-error hidden"></div>
+
+      <form id="joinForm">
+        <label for="nameInput">Your Name</label>
+        <input type="text" id="nameInput" placeholder="e.g. John Smith" maxlength="60" autocomplete="off" required>
+        <button type="submit" class="btn btn-primary btn-block btn-lg mt-24">Join Quiz</button>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('joinForm');
+    const nameInput = document.getElementById('nameInput');
+    const errorEl = document.getElementById('error');
+
+    if (localStorage.getItem('participant_token')) {
+      window.location.href = '/quiz';
+    }
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      errorEl.classList.add('hidden');
+      const name = nameInput.value.trim();
+      if (!name) return;
+
+      const btn = form.querySelector('button');
+      btn.disabled = true;
+      btn.textContent = 'Joining...';
+
+      try {
+        const res = await fetch('/api/join', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || 'Failed to join');
+
+        localStorage.setItem('participant_token', data.token);
+        localStorage.setItem('participant_name', data.name);
+        window.location.href = '/quiz';
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.classList.remove('hidden');
+        btn.disabled = false;
+        btn.textContent = 'Join Quiz';
+      }
+    });
+  </script>
+</body>
+</html>
