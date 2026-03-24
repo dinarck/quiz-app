@@ -11,9 +11,10 @@ const io = new Server(server);
 
 const PORT = process.env.PORT || 3000;
 const HOST_PASSWORD = process.env.HOST_PASSWORD || 'host123';
+const VALID_ANSWERS = ['A', 'B', 'C', 'D'];
 let hostToken = crypto.randomUUID();
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
 app.use(express.static(path.join(__dirname, 'public')));
 
 // ── Auth middleware ──────────────────────────────────────────────────
@@ -54,7 +55,8 @@ app.get('/api/host/participants', requireHost, (_req, res) => {
 app.post('/api/host/questions', requireHost, (req, res) => {
   const text = (req.body.text || '').trim();
   if (!text) return res.status(400).json({ error: 'Question text required' });
-  const question = db.addQuestion(text);
+  const imageData = req.body.imageData || null;
+  const question = db.addQuestion(text, imageData);
   broadcastHostStats();
   res.json(question);
 });
@@ -130,7 +132,13 @@ app.get('/api/quiz/state', requireParticipant, (req, res) => {
 
   const visibleQuestions = questions
     .filter(q => q.order_num <= activeOrder)
-    .map(q => ({ id: q.id, text: q.text, order_num: q.order_num, answer: answerMap[q.id] || null }));
+    .map(q => ({
+      id: q.id,
+      text: q.text,
+      image_data: q.image_data || null,
+      order_num: q.order_num,
+      answer: answerMap[q.id] || null,
+    }));
 
   res.json({
     participant: { id: req.participant.id, name: req.participant.name },
@@ -141,8 +149,8 @@ app.get('/api/quiz/state', requireParticipant, (req, res) => {
 
 app.post('/api/quiz/answer', requireParticipant, (req, res) => {
   const { questionId, answer } = req.body;
-  if (!questionId || !['yes', 'no'].includes(answer)) {
-    return res.status(400).json({ error: 'Valid questionId and answer (yes/no) required' });
+  if (!questionId || !VALID_ANSWERS.includes(answer)) {
+    return res.status(400).json({ error: 'Valid questionId and answer (A/B/C/D) required' });
   }
   const questions = db.getAllQuestions();
   const question = questions.find(q => q.id === questionId);
