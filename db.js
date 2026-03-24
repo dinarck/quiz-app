@@ -6,6 +6,8 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
+const SCHEMA_VERSION = '2';
+
 db.exec(`
   CREATE TABLE IF NOT EXISTS config (
     key TEXT PRIMARY KEY,
@@ -15,6 +17,7 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS questions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
+    image_data TEXT,
     order_num INTEGER NOT NULL
   );
 
@@ -24,12 +27,21 @@ db.exec(`
     token TEXT UNIQUE NOT NULL,
     joined_at DATETIME DEFAULT CURRENT_TIMESTAMP
   );
+`);
 
+const currentVer = db.prepare('SELECT value FROM config WHERE key = ?').get('schema_version');
+if (!currentVer || currentVer.value !== SCHEMA_VERSION) {
+  try { db.exec('ALTER TABLE questions ADD COLUMN image_data TEXT'); } catch (e) { /* already exists */ }
+  db.exec('DROP TABLE IF EXISTS responses');
+  db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run('schema_version', SCHEMA_VERSION);
+}
+
+db.exec(`
   CREATE TABLE IF NOT EXISTS responses (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     participant_id INTEGER NOT NULL,
     question_id INTEGER NOT NULL,
-    answer TEXT NOT NULL CHECK(answer IN ('yes', 'no')),
+    answer TEXT NOT NULL CHECK(answer IN ('A', 'B', 'C', 'D')),
     answered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (participant_id) REFERENCES participants(id),
     FOREIGN KEY (question_id) REFERENCES questions(id),
@@ -42,7 +54,8 @@ const stmts = {
   setConfig: db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)'),
 
   allQuestions: db.prepare('SELECT * FROM questions ORDER BY order_num ASC'),
-  addQuestion: db.prepare('INSERT INTO questions (text, order_num) VALUES (?, ?)'),
+  allQuestionsLite: db.prepare('SELECT id, text, order_num, (image_data IS NOT NULL) as has_image FROM questions ORDER BY order_num ASC'),
+  addQuestion: db.prepare('INSERT INTO questions (text, image_data, order_num) VALUES (?, ?, ?)'),
   maxOrder: db.prepare('SELECT COALESCE(MAX(order_num), 0) as max FROM questions'),
   deleteQuestion: db.prepare('DELETE FROM questions WHERE id = ?'),
   updateOrder: db.prepare('UPDATE questions SET order_num = ? WHERE id = ?'),
@@ -62,9 +75,7 @@ const stmts = {
     DO UPDATE SET answer = excluded.answer, answered_at = CURRENT_TIMESTAMP
   `),
   participantAnswers: db.prepare('SELECT question_id, answer FROM responses WHERE participant_id = ?'),
-  yesCount: db.prepare("SELECT COUNT(*) as count FROM responses WHERE question_id = ? AND answer = 'yes'"),
-  noCount: db.prepare("SELECT COUNT(*) as count FROM responses WHERE question_id = ? AND answer = 'no'"),
-  answeredCount: db.prepare("SELECT COUNT(*) as count FROM responses WHERE question_id = ?"),
+  optionCount: db.prepare("SELECT answer, COUNT(*) as count FROM responses WHERE question_id = ? GROUP BY answer"),
 
   deleteResponsesByQuestion: db.prepare('DELETE FROM responses WHERE question_id = ?'),
   clearResponses: db.prepare('DELETE FROM responses'),
@@ -72,7 +83,7 @@ const stmts = {
   clearQuestions: db.prepare('DELETE FROM questions'),
 };
 
-stmts.setConfig.run('active_question_order', '0');
+stmts.setConfig.run('active_question_order', db.prepare('SELECT value FROM config WHERE key = ?').get('active_question_order')?.value || '0');
 
 module.exports = {
   getConfig(key) {
@@ -88,10 +99,14 @@ module.exports = {
     return stmts.allQuestions.all();
   },
 
-  addQuestion(text) {
+  getAllQuestionsLite() {
+    return stmts.allQuestionsLite.all();
+  },
+
+  addQuestion(text, imageData) {
     const orderNum = stmts.maxOrder.get().max + 1;
-    const info = stmts.addQuestion.run(text, orderNum);
-    return { id: Number(info.lastInsertRowid), text, order_num: orderNum };
+    const info = stmts.addQuestion.run(text, imageData || null, orderNum);
+    return { id: Number(info.lastInsertRowid), text, has_image: !!imageData, order_num: orderNum };
   },
 
   updateQuestionText(id, text) {
@@ -135,17 +150,18 @@ module.exports = {
   },
 
   getQuestionStats(questionId) {
-    const yes = stmts.yesCount.get(questionId).count;
-    const no = stmts.noCount.get(questionId).count;
-    const total = yes + no;
-    let majority = 'Tie';
-    if (yes > no) majority = 'Yes';
-    else if (no > yes) majority = 'No';
-    return { yes, no, total, majority };
+    const rows = stmts.optionCount.all(questionId);
+    const counts = { A: 0, B: 0, C: 0, D: 0 };
+    rows.forEach(r => { counts[r.answer] = r.count; });
+    const total = counts.A + counts.B + counts.C + counts.D;
+    const max = Math.max(counts.A, counts.B, counts.C, counts.D);
+    const winners = Object.keys(counts).filter(k => counts[k] === max && max > 0);
+    const majority = max === 0 ? 'None' : (winners.length === 1 ? winners[0] : 'Tie');
+    return { ...counts, total, majority };
   },
 
   getFullStats() {
-    const questions = stmts.allQuestions.all();
+    const questions = stmts.allQuestionsLite.all();
     const participantCount = stmts.participantCount.get().count;
     const activeOrder = parseInt(this.getConfig('active_question_order')) || 0;
 
