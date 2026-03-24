@@ -72,13 +72,25 @@
       <div class="panel">
         <h2>Questions</h2>
 
-        <div class="add-question-form">
+        <!-- Add question form -->
+        <div class="add-question-box">
           <input type="text" id="newQuestionInput" placeholder="Type a new question...">
-          <button class="btn btn-primary btn-sm" onclick="addQuestion()">Add</button>
+          <div class="image-upload-row mt-8">
+            <label class="btn btn-outline btn-sm upload-label" for="imageInput">
+              &#128247; Attach Image
+            </label>
+            <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="previewImage(this)">
+            <span class="text-muted" id="imageFileName">No image selected</span>
+            <button class="btn btn-sm btn-outline hidden" id="clearImageBtn" onclick="clearImage()" style="padding:4px 10px">&#10005;</button>
+          </div>
+          <div id="imagePreview" class="image-preview hidden">
+            <img id="previewImg" src="" alt="Preview">
+          </div>
+          <button class="btn btn-primary btn-block mt-8" onclick="addQuestion()">Add Question</button>
         </div>
 
         <!-- Activate control -->
-        <div class="activate-bar" id="activateBar">
+        <div class="activate-bar mt-16" id="activateBar">
           <div class="info">
             Active up to: <strong>Question <span id="activeUpTo">0</span></strong>
             of <span id="totalQuestions">0</span>
@@ -103,6 +115,7 @@
   <script>
     let hostToken = localStorage.getItem('host_token');
     let stats = null;
+    let pendingImageData = null;
 
     const socket = io();
 
@@ -168,6 +181,36 @@
       });
     }
 
+    // ── Image upload ────────────────────────────────────────────
+
+    function previewImage(input) {
+      const file = input.files[0];
+      if (!file) return;
+      if (file.size > 5 * 1024 * 1024) {
+        alert('Image must be under 5MB');
+        input.value = '';
+        return;
+      }
+      document.getElementById('imageFileName').textContent = file.name;
+      document.getElementById('clearImageBtn').classList.remove('hidden');
+
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        pendingImageData = e.target.result;
+        document.getElementById('previewImg').src = pendingImageData;
+        document.getElementById('imagePreview').classList.remove('hidden');
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function clearImage() {
+      pendingImageData = null;
+      document.getElementById('imageInput').value = '';
+      document.getElementById('imageFileName').textContent = 'No image selected';
+      document.getElementById('clearImageBtn').classList.add('hidden');
+      document.getElementById('imagePreview').classList.add('hidden');
+    }
+
     // ── Load data ──────────────────────────────────────────────
 
     async function loadDashboard() {
@@ -213,13 +256,16 @@
       list.innerHTML = stats.questions.map((q) => {
         const isActive = q.order_num <= stats.activeQuestionOrder;
         const cls = isActive ? 'active' : (stats.activeQuestionOrder > 0 ? 'inactive' : '');
+        const imgIcon = q.has_image ? ' &#128247;' : '';
         return `
           <div class="question-item ${cls}" data-id="${q.id}">
             <div class="q-number">${q.order_num}</div>
-            <div class="q-text">${escapeHtml(q.text)}</div>
+            <div class="q-text">${escapeHtml(q.text)}${imgIcon}</div>
             <div class="q-stats">
-              <span class="q-yes">${q.stats.yes} Y</span>
-              <span class="q-no">${q.stats.no} N</span>
+              <span class="q-opt-a">${q.stats.A}</span>
+              <span class="q-opt-b">${q.stats.B}</span>
+              <span class="q-opt-c">${q.stats.C}</span>
+              <span class="q-opt-d">${q.stats.D}</span>
             </div>
             <div class="q-actions">
               <button title="Move up" onclick="moveQuestion(${q.id}, -1)">&#9650;</button>
@@ -239,15 +285,18 @@
         return;
       }
 
+      const optColors = { A: 'opt-a', B: 'opt-b', C: 'opt-c', D: 'opt-d' };
+
       container.innerHTML = activeQs.map(q => {
         const s = q.stats;
-        const total = s.yes + s.no;
-        const yesPct = total > 0 ? Math.round((s.yes / total) * 100) : 0;
-        const noPct = total > 0 ? Math.round((s.no / total) * 100) : 0;
+        const total = s.total || 1;
+        const pctA = Math.round((s.A / total) * 100);
+        const pctB = Math.round((s.B / total) * 100);
+        const pctC = Math.round((s.C / total) * 100);
+        const pctD = Math.round((s.D / total) * 100);
 
         let majorityClass = 'tie-majority';
-        if (s.majority === 'Yes') majorityClass = 'yes-majority';
-        else if (s.majority === 'No') majorityClass = 'no-majority';
+        if (['A','B','C','D'].includes(s.majority)) majorityClass = s.majority.toLowerCase() + '-majority';
 
         return `
           <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:var(--radius-sm)">
@@ -257,26 +306,30 @@
             </div>
             <div class="stats-row" style="margin-bottom:8px">
               <div class="stat-card" style="padding:10px">
-                <div class="stat-value success" style="font-size:22px">${s.yes}</div>
-                <div class="stat-label">Yes (${yesPct}%)</div>
+                <div class="stat-value opt-a-color" style="font-size:22px">${s.A}</div>
+                <div class="stat-label">A (${s.total > 0 ? pctA : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
-                <div class="stat-value danger" style="font-size:22px">${s.no}</div>
-                <div class="stat-label">No (${noPct}%)</div>
+                <div class="stat-value opt-b-color" style="font-size:22px">${s.B}</div>
+                <div class="stat-label">B (${s.total > 0 ? pctB : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
-                <div class="stat-value" style="font-size:22px">${total}</div>
-                <div class="stat-label">Answered</div>
+                <div class="stat-value opt-c-color" style="font-size:22px">${s.C}</div>
+                <div class="stat-label">C (${s.total > 0 ? pctC : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
-                <div class="stat-value warning" style="font-size:22px">${stats.participantCount - total}</div>
-                <div class="stat-label">Pending</div>
+                <div class="stat-value opt-d-color" style="font-size:22px">${s.D}</div>
+                <div class="stat-label">D (${s.total > 0 ? pctD : 0}%)</div>
               </div>
             </div>
-            <!-- Bar visualization -->
-            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border)">
-              <div style="width:${yesPct}%;background:var(--success);transition:width .3s"></div>
-              <div style="width:${noPct}%;background:var(--danger);transition:width .3s"></div>
+            <div class="stat-card" style="padding:8px;text-align:center">
+              <span style="font-size:13px;color:var(--text-secondary)">${s.total} answered · ${stats.participantCount - s.total} pending</span>
+            </div>
+            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border);margin-top:8px">
+              <div style="width:${s.total > 0 ? pctA : 0}%;background:var(--opt-a);transition:width .3s"></div>
+              <div style="width:${s.total > 0 ? pctB : 0}%;background:var(--opt-b);transition:width .3s"></div>
+              <div style="width:${s.total > 0 ? pctC : 0}%;background:var(--opt-c);transition:width .3s"></div>
+              <div style="width:${s.total > 0 ? pctD : 0}%;background:var(--opt-d);transition:width .3s"></div>
             </div>
           </div>`;
       }).join('');
@@ -288,8 +341,13 @@
       const input = document.getElementById('newQuestionInput');
       const text = input.value.trim();
       if (!text) return;
+
+      const body = { text };
+      if (pendingImageData) body.imageData = pendingImageData;
+
       input.value = '';
-      await apiFetch('/api/host/questions', 'POST', { text });
+      clearImage();
+      await apiFetch('/api/host/questions', 'POST', body);
     }
 
     async function deleteQuestion(id) {
@@ -337,7 +395,6 @@
       }
     }
 
-    // Enter key to add question
     document.getElementById('newQuestionInput').addEventListener('keydown', (e) => {
       if (e.key === 'Enter') { e.preventDefault(); addQuestion(); }
     });
