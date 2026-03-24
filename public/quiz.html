@@ -89,33 +89,39 @@
       const isLast = currentIndex === questions.length - 1;
       const canGoNext = !isLast;
       const isFirst = currentIndex === 0;
-      const answered = q.answer !== null;
+      const selectedAnswer = q.answer;
 
-      let answerHTML = '';
-      if (answered) {
-        const cls = q.answer === 'yes' ? 'yes' : 'no';
-        const label = q.answer === 'yes' ? 'YES' : 'NO';
-        answerHTML = `
-          <div class="answer-confirmed ${cls}">
-            You answered: ${label}
-          </div>
-          <div class="answer-group">
-            <button class="btn-yes ${q.answer === 'yes' ? 'selected' : ''}" onclick="submitAnswer(${q.id}, 'yes')">YES</button>
-            <button class="btn-no ${q.answer === 'no' ? 'selected' : ''}" onclick="submitAnswer(${q.id}, 'no')">NO</button>
+      let imageHTML = '';
+      if (q.image_data) {
+        imageHTML = `<div class="question-image"><img src="${q.image_data}" alt="Question image"></div>`;
+      }
+
+      const options = ['A', 'B', 'C', 'D'];
+      const optionLabels = { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
+      let optionsHTML = '<div class="radio-group">';
+      options.forEach(opt => {
+        const isSelected = selectedAnswer === opt;
+        optionsHTML += `
+          <label class="radio-option ${isSelected ? 'selected' : ''}" onclick="submitAnswer(${q.id}, '${opt}')">
+            <span class="radio-circle ${isSelected ? 'checked' : ''}">
+              ${isSelected ? '&#10003;' : ''}
+            </span>
+            <span class="radio-label">${opt}</span>
+          </label>`;
+      });
+      optionsHTML += '</div>';
+
+      let confirmHTML = '';
+      if (selectedAnswer) {
+        confirmHTML = `
+          <div class="answer-confirmed opt-${selectedAnswer.toLowerCase()}-bg">
+            You selected: <strong>${selectedAnswer}</strong>
           </div>
           <div class="text-muted text-center">You can change your answer</div>`;
-      } else {
-        answerHTML = `
-          <div class="answer-group">
-            <button class="btn-yes" onclick="submitAnswer(${q.id}, 'yes')">YES</button>
-            <button class="btn-no" onclick="submitAnswer(${q.id}, 'no')">NO</button>
-          </div>`;
       }
 
       let navHTML = '';
-      const waitingForNext = isLast && activeQuestionOrder > 0;
       if (isLast && questions.length < activeQuestionOrder) {
-        // More questions should be available but we haven't fetched them
         navHTML = `
           <div class="quiz-nav">
             ${!isFirst ? `<button class="btn btn-outline btn-sm" onclick="prevQuestion()">&#8592; Previous</button>` : '<span></span>'}
@@ -136,7 +142,9 @@
           <div class="question-number">Question ${q.order_num}</div>
           <div class="question-text">${escapeHtml(q.text)}</div>
         </div>
-        ${answerHTML}
+        ${imageHTML}
+        ${optionsHTML}
+        ${confirmHTML}
         ${navHTML}`;
 
       updateProgress();
