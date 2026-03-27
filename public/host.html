@@ -75,6 +75,24 @@
         <!-- Add question form -->
         <div class="add-question-box">
           <input type="text" id="newQuestionInput" placeholder="Type a new question...">
+          <div class="options-grid mt-8">
+            <div class="option-input-row">
+              <span class="option-label opt-a-badge">A</span>
+              <input type="text" id="optionA" placeholder="Answer for option A">
+            </div>
+            <div class="option-input-row">
+              <span class="option-label opt-b-badge">B</span>
+              <input type="text" id="optionB" placeholder="Answer for option B">
+            </div>
+            <div class="option-input-row">
+              <span class="option-label opt-c-badge">C</span>
+              <input type="text" id="optionC" placeholder="Answer for option C">
+            </div>
+            <div class="option-input-row">
+              <span class="option-label opt-d-badge">D</span>
+              <input type="text" id="optionD" placeholder="Answer for option D">
+            </div>
+          </div>
           <div class="image-upload-row mt-8">
             <label class="btn btn-outline btn-sm upload-label" for="imageInput">
               &#128247; Attach Image
@@ -257,20 +275,29 @@
         const isActive = q.order_num <= stats.activeQuestionOrder;
         const cls = isActive ? 'active' : (stats.activeQuestionOrder > 0 ? 'inactive' : '');
         const imgIcon = q.has_image ? ' &#128247;' : '';
+        const opts = parseOptions(q.options);
         return `
-          <div class="question-item ${cls}" data-id="${q.id}">
-            <div class="q-number">${q.order_num}</div>
-            <div class="q-text">${escapeHtml(q.text)}${imgIcon}</div>
-            <div class="q-stats">
-              <span class="q-opt-a">${q.stats.A}</span>
-              <span class="q-opt-b">${q.stats.B}</span>
-              <span class="q-opt-c">${q.stats.C}</span>
-              <span class="q-opt-d">${q.stats.D}</span>
+          <div class="question-item-wrap ${cls}" data-id="${q.id}">
+            <div class="question-item-header">
+              <div class="q-number">${q.order_num}</div>
+              <div class="q-text">${escapeHtml(q.text)}${imgIcon}</div>
+              <div class="q-stats">
+                <span class="q-opt-a" title="${escapeHtml(opts.A)}">${q.stats.A}</span>
+                <span class="q-opt-b" title="${escapeHtml(opts.B)}">${q.stats.B}</span>
+                <span class="q-opt-c" title="${escapeHtml(opts.C)}">${q.stats.C}</span>
+                <span class="q-opt-d" title="${escapeHtml(opts.D)}">${q.stats.D}</span>
+              </div>
+              <div class="q-actions">
+                <button title="Move up" onclick="moveQuestion(${q.id}, -1)">&#9650;</button>
+                <button title="Move down" onclick="moveQuestion(${q.id}, 1)">&#9660;</button>
+                <button title="Delete" onclick="deleteQuestion(${q.id})">&#10005;</button>
+              </div>
             </div>
-            <div class="q-actions">
-              <button title="Move up" onclick="moveQuestion(${q.id}, -1)">&#9650;</button>
-              <button title="Move down" onclick="moveQuestion(${q.id}, 1)">&#9660;</button>
-              <button title="Delete" onclick="deleteQuestion(${q.id})">&#10005;</button>
+            <div class="q-options-preview">
+              <span class="q-opt-tag q-opt-a">A: ${escapeHtml(opts.A)}</span>
+              <span class="q-opt-tag q-opt-b">B: ${escapeHtml(opts.B)}</span>
+              <span class="q-opt-tag q-opt-c">C: ${escapeHtml(opts.C)}</span>
+              <span class="q-opt-tag q-opt-d">D: ${escapeHtml(opts.D)}</span>
             </div>
           </div>`;
       }).join('');
@@ -289,37 +316,42 @@
 
       container.innerHTML = activeQs.map(q => {
         const s = q.stats;
+        const opts = parseOptions(q.options);
         const total = s.total || 1;
         const pctA = Math.round((s.A / total) * 100);
         const pctB = Math.round((s.B / total) * 100);
         const pctC = Math.round((s.C / total) * 100);
         const pctD = Math.round((s.D / total) * 100);
 
+        let majorityLabel = s.majority;
         let majorityClass = 'tie-majority';
-        if (['A','B','C','D'].includes(s.majority)) majorityClass = s.majority.toLowerCase() + '-majority';
+        if (['A','B','C','D'].includes(s.majority)) {
+          majorityClass = s.majority.toLowerCase() + '-majority';
+          majorityLabel = opts[s.majority];
+        }
 
         return `
           <div style="margin-bottom:20px;padding:16px;border:1px solid var(--border);border-radius:var(--radius-sm)">
             <div class="flex justify-between items-center mb-8">
               <strong style="font-size:14px">Q${q.order_num}: ${escapeHtml(q.text)}</strong>
-              <span class="q-majority ${majorityClass}">${s.majority}</span>
+              <span class="q-majority ${majorityClass}">${escapeHtml(majorityLabel)}</span>
             </div>
             <div class="stats-row" style="margin-bottom:8px">
               <div class="stat-card" style="padding:10px">
                 <div class="stat-value opt-a-color" style="font-size:22px">${s.A}</div>
-                <div class="stat-label">A (${s.total > 0 ? pctA : 0}%)</div>
+                <div class="stat-label">${escapeHtml(opts.A)} (${s.total > 0 ? pctA : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
                 <div class="stat-value opt-b-color" style="font-size:22px">${s.B}</div>
-                <div class="stat-label">B (${s.total > 0 ? pctB : 0}%)</div>
+                <div class="stat-label">${escapeHtml(opts.B)} (${s.total > 0 ? pctB : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
                 <div class="stat-value opt-c-color" style="font-size:22px">${s.C}</div>
-                <div class="stat-label">C (${s.total > 0 ? pctC : 0}%)</div>
+                <div class="stat-label">${escapeHtml(opts.C)} (${s.total > 0 ? pctC : 0}%)</div>
               </div>
               <div class="stat-card" style="padding:10px">
                 <div class="stat-value opt-d-color" style="font-size:22px">${s.D}</div>
-                <div class="stat-label">D (${s.total > 0 ? pctD : 0}%)</div>
+                <div class="stat-label">${escapeHtml(opts.D)} (${s.total > 0 ? pctD : 0}%)</div>
               </div>
             </div>
             <div class="stat-card" style="padding:8px;text-align:center">
@@ -342,12 +374,28 @@
       const text = input.value.trim();
       if (!text) return;
 
-      const body = { text };
+      const optA = document.getElementById('optionA').value.trim();
+      const optB = document.getElementById('optionB').value.trim();
+      const optC = document.getElementById('optionC').value.trim();
+      const optD = document.getElementById('optionD').value.trim();
+
+      if (!optA || !optB || !optC || !optD) {
+        alert('Please fill in all four answer options.');
+        return;
+      }
+
+      const body = { text, options: { A: optA, B: optB, C: optC, D: optD } };
       if (pendingImageData) body.imageData = pendingImageData;
 
-      input.value = '';
-      clearImage();
-      await apiFetch('/api/host/questions', 'POST', body);
+      const result = await apiFetch('/api/host/questions', 'POST', body);
+      if (result) {
+        input.value = '';
+        document.getElementById('optionA').value = '';
+        document.getElementById('optionB').value = '';
+        document.getElementById('optionC').value = '';
+        document.getElementById('optionD').value = '';
+        clearImage();
+      }
     }
 
     async function deleteQuestion(id) {
@@ -407,6 +455,16 @@
     });
 
     // ── Util ───────────────────────────────────────────────────
+
+    function parseOptions(raw) {
+      const fallback = { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
+      if (!raw) return fallback;
+      try {
+        return typeof raw === 'string' ? JSON.parse(raw) : raw;
+      } catch (e) {
+        return fallback;
+      }
+    }
 
     function escapeHtml(str) {
       const div = document.createElement('div');
