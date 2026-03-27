@@ -6,7 +6,7 @@ const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
 
-const SCHEMA_VERSION = '2';
+const SCHEMA_VERSION = '3';
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS config (
@@ -18,6 +18,7 @@ db.exec(`
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
     image_data TEXT,
+    options TEXT,
     order_num INTEGER NOT NULL
   );
 
@@ -32,6 +33,9 @@ db.exec(`
 const currentVer = db.prepare('SELECT value FROM config WHERE key = ?').get('schema_version');
 if (!currentVer || currentVer.value !== SCHEMA_VERSION) {
   try { db.exec('ALTER TABLE questions ADD COLUMN image_data TEXT'); } catch (e) { /* already exists */ }
+  try { db.exec('ALTER TABLE questions ADD COLUMN options TEXT'); } catch (e) { /* already exists */ }
+  const defaultOpts = JSON.stringify({ A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' });
+  db.prepare('UPDATE questions SET options = ? WHERE options IS NULL').run(defaultOpts);
   db.exec('DROP TABLE IF EXISTS responses');
   db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)').run('schema_version', SCHEMA_VERSION);
 }
@@ -54,14 +58,14 @@ const stmts = {
   setConfig: db.prepare('INSERT OR REPLACE INTO config (key, value) VALUES (?, ?)'),
 
   allQuestions: db.prepare('SELECT * FROM questions ORDER BY order_num ASC'),
-  allQuestionsLite: db.prepare('SELECT id, text, order_num, (image_data IS NOT NULL) as has_image FROM questions ORDER BY order_num ASC'),
-  addQuestion: db.prepare('INSERT INTO questions (text, image_data, order_num) VALUES (?, ?, ?)'),
+  allQuestionsLite: db.prepare('SELECT id, text, options, order_num, (image_data IS NOT NULL) as has_image FROM questions ORDER BY order_num ASC'),
+  addQuestion: db.prepare('INSERT INTO questions (text, image_data, options, order_num) VALUES (?, ?, ?, ?)'),
   maxOrder: db.prepare('SELECT COALESCE(MAX(order_num), 0) as max FROM questions'),
   deleteQuestion: db.prepare('DELETE FROM questions WHERE id = ?'),
   updateOrder: db.prepare('UPDATE questions SET order_num = ? WHERE id = ?'),
   questionIds: db.prepare('SELECT id FROM questions ORDER BY order_num ASC'),
   questionById: db.prepare('SELECT * FROM questions WHERE id = ?'),
-  updateQuestionText: db.prepare('UPDATE questions SET text = ? WHERE id = ?'),
+  updateQuestionText: db.prepare('UPDATE questions SET text = ?, options = ? WHERE id = ?'),
 
   addParticipant: db.prepare('INSERT INTO participants (name, token) VALUES (?, ?)'),
   participantByToken: db.prepare('SELECT * FROM participants WHERE token = ?'),
@@ -103,14 +107,20 @@ module.exports = {
     return stmts.allQuestionsLite.all();
   },
 
-  addQuestion(text, imageData) {
+  addQuestion(text, imageData, options) {
     const orderNum = stmts.maxOrder.get().max + 1;
-    const info = stmts.addQuestion.run(text, imageData || null, orderNum);
-    return { id: Number(info.lastInsertRowid), text, has_image: !!imageData, order_num: orderNum };
+    const optionsJson = JSON.stringify(options || { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' });
+    const info = stmts.addQuestion.run(text, imageData || null, optionsJson, orderNum);
+    return { id: Number(info.lastInsertRowid), text, options: optionsJson, has_image: !!imageData, order_num: orderNum };
   },
 
-  updateQuestionText(id, text) {
-    stmts.updateQuestionText.run(text, id);
+  updateQuestionText(id, text, options) {
+    const optionsJson = options ? JSON.stringify(options) : null;
+    if (optionsJson) {
+      stmts.updateQuestionText.run(text, optionsJson, id);
+    } else {
+      db.prepare('UPDATE questions SET text = ? WHERE id = ?').run(text, id);
+    }
   },
 
   deleteQuestion(id) {
