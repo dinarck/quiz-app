@@ -10,7 +10,7 @@
 </head>
 <body>
   <div class="center-page">
-    <div class="card card-wide" style="max-width:560px">
+    <div class="card card-quiz">
       <!-- Header -->
       <div class="flex justify-between items-center mb-16">
         <div>
@@ -96,17 +96,17 @@
         imageHTML = `<div class="question-image"><img src="${q.image_data}" alt="Question image"></div>`;
       }
 
-      const options = ['A', 'B', 'C', 'D'];
-      const optionLabels = { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
+      const optKeys = ['A', 'B', 'C', 'D'];
+      const opts = q.options || { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' };
       let optionsHTML = '<div class="radio-group">';
-      options.forEach(opt => {
+      optKeys.forEach(opt => {
         const isSelected = selectedAnswer === opt;
         optionsHTML += `
           <label class="radio-option ${isSelected ? 'selected' : ''}" onclick="submitAnswer(${q.id}, '${opt}')">
             <span class="radio-circle ${isSelected ? 'checked' : ''}">
               ${isSelected ? '&#10003;' : ''}
             </span>
-            <span class="radio-label">${opt}</span>
+            <span class="radio-label">${escapeHtml(opts[opt])}</span>
           </label>`;
       });
       optionsHTML += '</div>';
@@ -115,7 +115,7 @@
       if (selectedAnswer) {
         confirmHTML = `
           <div class="answer-confirmed opt-${selectedAnswer.toLowerCase()}-bg">
-            You selected: <strong>${selectedAnswer}</strong>
+            You selected: <strong>${escapeHtml(opts[selectedAnswer])}</strong>
           </div>
           <div class="text-muted text-center">You can change your answer</div>`;
       }
