@@ -56,7 +56,11 @@ app.post('/api/host/questions', requireHost, (req, res) => {
   const text = (req.body.text || '').trim();
   if (!text) return res.status(400).json({ error: 'Question text required' });
   const imageData = req.body.imageData || null;
-  const question = db.addQuestion(text, imageData);
+  const options = req.body.options || null;
+  if (options && (typeof options !== 'object' || !options.A || !options.B || !options.C || !options.D)) {
+    return res.status(400).json({ error: 'Options must include A, B, C, and D text' });
+  }
+  const question = db.addQuestion(text, imageData, options);
   broadcastHostStats();
   res.json(question);
 });
@@ -64,7 +68,11 @@ app.post('/api/host/questions', requireHost, (req, res) => {
 app.put('/api/host/questions/:id', requireHost, (req, res) => {
   const text = (req.body.text || '').trim();
   if (!text) return res.status(400).json({ error: 'Question text required' });
-  db.updateQuestionText(parseInt(req.params.id), text);
+  const options = req.body.options || null;
+  if (options && (typeof options !== 'object' || !options.A || !options.B || !options.C || !options.D)) {
+    return res.status(400).json({ error: 'Options must include A, B, C, and D text' });
+  }
+  db.updateQuestionText(parseInt(req.params.id), text, options);
   broadcastHostStats();
   res.json({ success: true });
 });
@@ -136,6 +144,7 @@ app.get('/api/quiz/state', requireParticipant, (req, res) => {
       id: q.id,
       text: q.text,
       image_data: q.image_data || null,
+      options: q.options ? JSON.parse(q.options) : { A: 'Option A', B: 'Option B', C: 'Option C', D: 'Option D' },
       order_num: q.order_num,
       answer: answerMap[q.id] || null,
     }));
