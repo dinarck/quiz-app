@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Host Dashboard - Quiz</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;0,800;1,600&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="/style.css">
   <script src="https://cdn.jsdelivr.net/npm/qrcode@1.5.4/build/qrcode.min.js"></script>
 </head>
@@ -30,7 +30,7 @@
     <!-- Header -->
     <div class="host-header">
       <div>
-        <div class="app-title" style="text-align:left;font-size:24px;margin:0">Quiz Host Dashboard</div>
+        <div class="app-title app-title--inline app-title--md">Quiz Host Dashboard</div>
         <div class="text-muted" id="statusText">Loading...</div>
       </div>
       <div class="flex gap-8 flex-wrap">
@@ -99,7 +99,7 @@
             </label>
             <input type="file" id="imageInput" accept="image/*" style="display:none" onchange="previewImage(this)">
             <span class="text-muted" id="imageFileName">No image selected</span>
-            <button class="btn btn-sm btn-outline hidden" id="clearImageBtn" onclick="clearImage()" style="padding:4px 10px">&#10005;</button>
+            <button type="button" class="btn btn-sm btn-outline hidden" id="clearImageBtn" onclick="clearImage()">&#10005;</button>
           </div>
           <div id="imagePreview" class="image-preview hidden">
             <img id="previewImg" src="" alt="Preview">
@@ -378,7 +378,7 @@
             <div class="stat-card" style="padding:8px;text-align:center">
               <span style="font-size:13px;color:var(--text-secondary)">${s.total} answered · ${stats.participantCount - s.total} pending</span>
             </div>
-            <div style="display:flex;height:8px;border-radius:4px;overflow:hidden;background:var(--border);margin-top:8px">
+            <div style="display:flex;height:8px;border-radius:9999px;overflow:hidden;background:var(--border);margin-top:8px">
               <div style="width:${s.total > 0 ? pctA : 0}%;background:var(--opt-a);transition:width .3s"></div>
               <div style="width:${s.total > 0 ? pctB : 0}%;background:var(--opt-b);transition:width .3s"></div>
               <div style="width:${s.total > 0 ? pctC : 0}%;background:var(--opt-c);transition:width .3s"></div>
