@@ -140,7 +140,7 @@
     // ── Login ──────────────────────────────────────────────────
 
     if (hostToken) {
-      showDashboard();
+      void showDashboard();
     }
 
     document.getElementById('loginForm').addEventListener('submit', async (e) => {
@@ -159,19 +159,23 @@
         if (!res.ok) throw new Error(data.error);
         hostToken = data.token;
         localStorage.setItem('host_token', hostToken);
-        showDashboard();
+        await showDashboard();
       } catch (err) {
         errEl.textContent = err.message;
         errEl.classList.remove('hidden');
       }
     });
 
-    function showDashboard() {
+    async function showDashboard() {
       document.getElementById('loginScreen').classList.add('hidden');
       document.getElementById('dashboard').classList.remove('hidden');
       socket.emit('join-host');
-      generateQR();
-      loadDashboard();
+      await loadDashboard();
+      try {
+        generateQR();
+      } catch (e) {
+        console.error('QR code failed (dashboard data still loaded)', e);
+      }
     }
 
     function logout() {
@@ -184,6 +188,10 @@
     function generateQR() {
       const joinUrl = window.location.origin + '/';
       document.getElementById('joinLink').textContent = joinUrl;
+      if (typeof QRCode === 'undefined') {
+        console.warn('QRCode library not loaded; join link is still shown above.');
+        return;
+      }
       const canvas = document.getElementById('qrCanvas');
       QRCode.toCanvas(canvas, joinUrl, { width: 120, margin: 1 }, (err) => {
         if (err) console.error('QR error', err);
@@ -237,7 +245,17 @@
           headers: { 'x-host-token': hostToken },
         });
         if (res.status === 401) { logout(); return; }
-        stats = await res.json();
+        const ct = res.headers.get('content-type') || '';
+        if (!ct.includes('application/json')) {
+          console.error('Dashboard response was not JSON', res.status);
+          return;
+        }
+        const data = await res.json();
+        if (!data || !Array.isArray(data.questions)) {
+          console.error('Invalid dashboard payload', data);
+          return;
+        }
+        stats = data;
         renderDashboard();
       } catch (e) {
         console.error('Failed to load dashboard', e);
@@ -271,7 +289,9 @@
         return;
       }
 
+      const emptyStats = { A: 0, B: 0, C: 0, D: 0, total: 0, majority: 'None' };
       list.innerHTML = stats.questions.map((q) => {
+        const s = q.stats || emptyStats;
         const isActive = q.order_num <= stats.activeQuestionOrder;
         const cls = isActive ? 'active' : (stats.activeQuestionOrder > 0 ? 'inactive' : '');
         const imgIcon = q.has_image ? ' &#128247;' : '';
@@ -282,10 +302,10 @@
               <div class="q-number">${q.order_num}</div>
               <div class="q-text">${escapeHtml(q.text)}${imgIcon}</div>
               <div class="q-stats">
-                <span class="q-opt-a" title="${escapeHtml(opts.A)}">${q.stats.A}</span>
-                <span class="q-opt-b" title="${escapeHtml(opts.B)}">${q.stats.B}</span>
-                <span class="q-opt-c" title="${escapeHtml(opts.C)}">${q.stats.C}</span>
-                <span class="q-opt-d" title="${escapeHtml(opts.D)}">${q.stats.D}</span>
+                <span class="q-opt-a" title="${escapeHtml(opts.A)}">${s.A}</span>
+                <span class="q-opt-b" title="${escapeHtml(opts.B)}">${s.B}</span>
+                <span class="q-opt-c" title="${escapeHtml(opts.C)}">${s.C}</span>
+                <span class="q-opt-d" title="${escapeHtml(opts.D)}">${s.D}</span>
               </div>
               <div class="q-actions">
                 <button title="Move up" onclick="moveQuestion(${q.id}, -1)">&#9650;</button>
@@ -314,8 +334,9 @@
 
       const optColors = { A: 'opt-a', B: 'opt-b', C: 'opt-c', D: 'opt-d' };
 
+      const emptyStats = { A: 0, B: 0, C: 0, D: 0, total: 0, majority: 'None' };
       container.innerHTML = activeQs.map(q => {
-        const s = q.stats;
+        const s = q.stats || emptyStats;
         const opts = parseOptions(q.options);
         const total = s.total || 1;
         const pctA = Math.round((s.A / total) * 100);
@@ -450,8 +471,18 @@
     // ── Real-time updates ──────────────────────────────────────
 
     socket.on('stats-update', (data) => {
-      stats = data;
-      renderDashboard();
+      if (data && Array.isArray(data.questions)) {
+        stats = data;
+        renderDashboard();
+      }
+    });
+
+    socket.on('connect', () => {
+      if (!localStorage.getItem('host_token')) return;
+      if (!document.getElementById('dashboard')?.classList.contains('hidden')) {
+        socket.emit('join-host');
+        void loadDashboard();
+      }
     });
 
     // ── Util ───────────────────────────────────────────────────
